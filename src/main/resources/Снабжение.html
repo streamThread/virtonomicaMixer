@@ -1,0 +1,3509 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+		<title>Снабжение</title>
+		<link href="/css/main.css?v=20" rel="stylesheet" type="text/css" />
+		<link href="/css/api.css?v=20" rel="stylesheet" type="text/css" />
+		<link href="/css/window.css" rel="stylesheet" type="text/css" />
+		<link href="/css/realms/vera.css" rel="stylesheet" type="text/css" />
+		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css">
+		
+		<script src="/assets/global/plugins/jquery.min.js" type="text/javascript"></script>	
+		<script src="https://code.jquery.com/jquery-migrate-1.4.1.js"></script>
+		<script type="text/javascript" src="/assets/global/plugins/jquery-ui/jquery-ui.min.js"></script>
+
+		<script type="text/javascript" src="/js/all.js"></script>
+		
+		<meta http-equiv="Expires" content="Tue, 01 Jan 2001 18:00:00 GMT" />
+		<meta http-equiv="Pragma" content="no-cache" />
+		<meta http-equiv="Cache-Control" content="no-cache" />
+
+	</head>
+	
+	<body class="window" >
+
+				
+			
+				
+			
+				
+		
+<link href="/css/supply.css?v=7" rel="stylesheet" type="text/css" />
+<script type="text/javascript">
+var currency_symbol = '$';
+var offer = new Array;
+var contracts = new Array;
+var data_is_changed = false;
+var selected_id = '';
+
+function FilterFadeIn()
+{
+	if ($('#supply_filter_form').css('display') == 'none')
+	{
+		$('#supply_filter_form').fadeIn(300);
+	}
+	else
+	{
+		$('#supply_filter_form').fadeOut(300);
+	}
+}
+function setFilter()
+{
+	document.getElementById("filterForm").submit();
+}
+function closeFilter()
+{
+	$('#supply_filter_form').fadeOut(300);
+}
+function clearFilter()
+{
+	oForm = document.getElementById("filterForm");
+	oForm.reset();
+	formHiddenFieldValueSet(oForm, 'total_price[from]', 0);
+	formHiddenFieldValueSet(oForm, 'total_price[to]', 0);
+	formHiddenFieldValueSet(oForm, 'quality[from]', 0);
+	formHiddenFieldValueSet(oForm, 'quality[to]', 0);
+	formHiddenFieldValueSet(oForm, 'quantity[from]', 1);
+	formHiddenFieldValueSet(oForm, 'free_for_buy[from]', 1);
+	formHiddenFieldValueSet(oForm, 'brand_value[from]', 0);
+	formHiddenFieldValueSet(oForm, 'brand_value[to]', 0);
+	oForm.submit();
+}
+$(window).unload( function(){ if (data_is_changed) { window.opener.location.reload(); }});
+
+function showOrderForm (id, friendly)
+{
+	var $row = $('#r' + id);
+	var $orderForm = $('#orderForm');
+	var $amountInput = $('#amountInput', $orderForm);
+	var offer_price;
+	if (selected_id != id) {
+		deselect(selected_id, false);
+		selected_id  = id;
+		$row.after($orderForm.show());
+		var currentPrice = $('#priceConstraint', $orderForm).val();
+		currentPrice.replace(/[^.0-9]/g, '');
+		if (offer && offer[id]) {
+			offer_price =  Math.ceil(offer[id]['price_contract']*100)/100;
+			//if (currentPrice < offer[id]['price_contract']) {
+				$('#priceConstraint', $orderForm).val(Math.ceil(offer[id]['price_contract']*100)/100);
+				$('#priceConstraint', $orderForm).unbind('blur').bind('blur', function()
+				{
+					$(this).val(Math.max($(this).val(), offer_price));
+				});
+			//}
+		}
+		var currentQuality = $('#qualityMin', $orderForm).val();
+		currentQuality.replace(/[^.0-9]/g, '');
+		if (currentQuality > offer[id]['quality']) { $('#qualityMin', $orderForm).val(Math.floor(offer[id]['quality']*100)/100); }
+		if ($row.hasClass('ordered_offer'))
+		{
+			$('#r' + id + ' > .choose > .pseudolink').text("Не изменять");
+			$amountInput.val(contracts[id]['amount']);
+			$amountInput.blur();
+			$('#constraintPriceType', $orderForm).val(contracts[id]['constraintPriceType']).change();
+			$('#priceConstraint', $orderForm).val(contracts[id]['priceConstraint']);
+			$('#priceMarkUp', $orderForm).val(contracts[id]['priceMarkUp']);
+			$('#qualityMin', $orderForm).val(contracts[id]['qualityMin']);
+			$('#instant', $orderForm).prop('checked', contracts[id]['instant']);
+			$('#ordered' + id).hide();
+		}
+		else
+		{
+			$('#r' + id + ' > .choose > .pseudolink').text("Не выбирать");
+			if (friendly) { $('#priceMarkUp', $orderForm).val(0); } else { $('#priceMarkUp', $orderForm).val(2); }
+		}
+		$row.attr('class', "chosen no_selecting");
+		calculatePrice();
+		$amountInput.select().focus();
+	}
+	else
+	{
+		deselect(id, true);
+		selected_id = '';
+	}
+}
+function deselect(id, bSelected)
+{
+	var $row = $('#r' + id);
+	var $orderForm = $('#orderForm');
+	if (!id) return;
+	$orderForm.hide();
+	if (typeof(contracts[id]) == 'undefined' || contracts[id] == null)
+	{
+		$('#r' + id + ' > .choose > .pseudolink').text("Выбрать");
+		if (bSelected && offer[id]['self'] == 't')
+		{
+			$row.attr('class', "selected_background selected_border wborder myself");
+		}
+		else if (bSelected)
+		{
+			$row.attr('class', "selected_background selected_border wborder");
+		}
+		else if (offer[id]['self'] == 't')
+		{
+			$row.attr('class', "wborder myself");
+		}
+		else
+		{
+			$row.attr('class', "wborder");
+		}
+	}
+	else
+	{
+		$('#ordered' + id).show();
+		$('#r' + id + ' > .choose > .pseudolink').text("Изменить");
+		if (bSelected)
+		{
+			$row.attr('class', "selected_background ordered_offer");
+		}
+		else
+		{
+			$row.attr('class', "ordered_offer");
+		}
+	}
+}
+function calculatePrice()
+{
+	var $orderForm = $('#orderForm');
+	var $amountInput = $('#amountInput', $orderForm);
+	if (!selected_id) return;
+	var amount = (parseInt($amountInput.val()) > 0) ? parseInt($amountInput.val()) : 0;
+	$('#totalPrice', $orderForm).text(sayMoney(amount * offer[selected_id].price, currency_symbol));
+}
+function priceTypeChange()
+{
+	var $orderForm = $('#orderForm');
+	var $constraintPriceType = $('#constraintPriceType', $orderForm);
+	if ($constraintPriceType.val() == 'Rel') {
+		$('.contractConstraintPriceAbs', $orderForm).hide();
+		$('.contractConstraintPriceRel', $orderForm).show();
+	} else if ($constraintPriceType.val() == 'Abs') {
+		$('.contractConstraintPriceAbs', $orderForm).show();
+		$('.contractConstraintPriceRel', $orderForm).hide();
+	}
+}
+function orderSupply()
+{
+	var $orderForm = $('#orderForm');
+	var $amountInput = $('#amountInput', $orderForm);
+	if (typeof(offer[selected_id]) == 'undefined' || offer[selected_id] == null) return;
+	data_is_changed = true;
+	var amount = parseInt($amountInput.val());
+	if (amount <= 0 || isNaN(amount))
+	{
+		deleteContract(selected_id);
+	}
+	else
+	{
+		addContract(
+			selected_id,
+			amount,
+			offer[selected_id]['price'],
+			$('#priceConstraint', $orderForm).val(),
+			$('#priceMarkUp', $orderForm).val(),
+			$('#qualityMin', $orderForm).val(),
+			$('#constraintPriceType', $orderForm).val(),
+			$('#instant', $orderForm).prop('checked'));
+		$.ajax({
+			url: 'https://virtonomica.ru/vera/ajax/unit/supply/create',
+			data:
+			{
+				'offer'  		  		: selected_id,
+				'unit'  		  		: 9075642,
+				'amount'		  		: amount,
+				'priceConstraint' 		: $('#priceConstraint', $orderForm).val(),
+				'priceMarkUp' 	  		: $('#priceMarkUp', $orderForm).val(),
+				'qualityMin' 	  		: $('#qualityMin', $orderForm).val(),
+				'constraintPriceType'	: $('#constraintPriceType', $orderForm).val(),
+				'instant'				: $('#instant', $orderForm).prop('checked')
+			},
+			type: 'post',
+			dataType: 'json',
+			success: function (j) {if (j['result'] == -5) { alert('Заключение контракта блокировано поставщиком'); deleteContract(j['offer']); }},
+			error: function (xhr, desc, er) { }
+		});
+	}
+	deselect(selected_id, false);
+   	selected_id = '';
+}
+function showOverall()
+{
+	var amount = 0;
+	var cost = 0;
+	for (i in contracts) {
+		amount += contracts[i]['amount'];
+		cost += contracts[i]['cost'];
+	}
+	$('.orderedAmount', $('#supplyFooter')).text(amount);
+	$('.orderedSum', $('#supplyFooter')).text(sayMoney(cost, currency_symbol));
+}
+function addContract (_id, amount, price, priceConstraint, priceMarkUp, qualityMin, constraintPriceType, instant)
+{
+	contracts[_id] = new Array;
+	contracts[_id]['amount'] = amount;
+	contracts[_id]['cost'] = amount * price;
+	contracts[_id]['priceConstraint'] = priceConstraint;
+	contracts[_id]['priceMarkUp'] = priceMarkUp;
+	contracts[_id]['qualityMin'] = qualityMin;
+	contracts[_id]['constraintPriceType'] = constraintPriceType;
+	contracts[_id]['instant'] = instant;
+	showOverall();
+	if (typeof(offer[_id]) == 'undefined') return;
+	$('#ordered').clone().insertAfter("#r" + _id).attr('id', 'ordered' + _id).show();
+    $('#ordered' + _id +' .orderedAmount').text(amount);
+    $('#ordered' + _id +' .orderedSum').text(sayMoney(contracts[_id]['cost'], currency_symbol));
+    $('#r' + _id).removeClass().addClass('ordered_offer');
+	$('#r' + _id + ' > .choose > .pseudolink').text("Изменить");
+	$('#ordered' + _id +' .cancelOrder').data('id',_id).click( function()
+	{
+		var id = $(this).data('id');
+		deselect(selected_id, false);
+		deleteContract(id);
+	});
+}
+function deleteContract (_id)
+{
+	delete contracts[_id];
+	deselect(_id, false);
+	selected_id = '';
+	showOverall();
+    $.ajax({
+		url: 'https://virtonomica.ru/vera/ajax/unit/supply/delete',
+		data: {'offer': _id, 'unit': 9075642},
+		type: 'post',
+		complete: function()
+		{
+			$('#ordered' + _id).remove();
+			if (offer[_id]['self'] == 't')
+			{
+				$('#r' + _id).attr('class', "wborder myself");
+			}
+			else
+			{
+				$('#r' + _id).attr('class', "wborder");
+			}
+			$('#r' + _id + ' > .choose > .pseudolink').text("Выбрать");
+		}
+	});
+}
+
+$(function(){
+addContract(9480351,
+			7,
+			502.536,
+			0,
+			1,
+			8,
+			'Rel',
+			false				  );
+	$('tr.ordered').bind('mouseenter mouseleave',function(e){
+		var t = $(this);
+		if(e.type == "mouseenter"){ t.addClass('selected_border'); } else { t.removeClass('selected_border'); }
+		if (t.prev().hasClass('orderFormStyle'))
+		{
+			if(e.type == "mouseenter"){ t.prev().prev().addClass('selected_background'); } else { t.prev().prev().removeClass('selected_background'); }		
+		}
+		else
+		{
+			if(e.type == "mouseenter"){ t.prev().addClass('selected_background'); } else { t.prev().removeClass('selected_background'); }
+		}
+	});
+	$('#orderForm').keypress( function(e) {
+		var $orderForm = $('#orderForm');
+		var $amountInput = $('#amountInput', $orderForm);
+		if (e.which == 13 || e.keyCode == 13) { $('#submitLink').click();} // enter
+		else if (e.which == 27 || e.keyCode == 27) { deselect(selected_id, false); selected_id = ''; } // esc
+		else if (e.which == 38 || e.keyCode == 38) { $amountInput.val(parseInt($amountInput.val(), 10) + 1).keyup(); } // up
+		else if (e.which == 40 || e.keyCode == 40) { $amountInput.val(parseInt($amountInput.val(), 10) - 1).keyup(); } // down
+	});
+	$('#filterForm input[type="text"]').keypress( function(e) { if (e.which == 13 || e.keyCode == 13) { setFilter(); }});
+	//if ($.browser.safari) { $('#orderForm').keydown( function(e) { if (e.which == 27 || e.keyCode == 27) { deselect(selected_id, false); selected_id = ''; }}); }
+	$('#requiredLink').click( function(e) {
+		var $orderForm = $('#orderForm');
+		var $amountInput = $('#amountInput', $orderForm);
+		$amountInput.val(parseInt(0)).keyup();
+	});
+});
+</script>
+
+
+<div id="supply_header">
+		<img alt="Фольктдрект" title="Фольктдрект" src="/img/products/folkdrakt.gif" />
+	<h1>Фольктдрект &mdash; Выбор поставщика</h1>
+		<div>
+		<i>Магазин :: Лунд</i>
+	</div>
+	
+		
+	<div>
+		Наличные средства управляющей компании: <b>$4 989 720.39</b>
+	</div>
+	
+		
+		
+		
+	<div class="supply_addition_info">
+		<table>
+			<tr>
+				<td>Средние значения магазинов города:</td>
+				<th>Цена = $861.89</th>
+				<th>Качество = 12.04</th>
+				<th>Бренд = 0.05</th>
+			</tr>
+			<tr>
+				<td>Местные поставщики:</td>
+				<th>Цена = $719.12</th>
+				<th>Качество = 5.18</th>
+				<th></th>
+			</tr>
+			
+		</table>
+	</div>
+	
+		
+		
+	<table class="tabsup">
+		<tr>
+													<td class="selected"><a href="https://virtonomica.ru/vera/window/common/util/setfiltering/dbshop/supplyList/supplierType=all/tm=all">Все</a></td>
+			<td ><a href="https://virtonomica.ru/vera/window/common/util/setfiltering/dbshop/supplyList/supplierType=self/tm=all">Свои</a></td>
+			<td ><a href="https://virtonomica.ru/vera/window/common/util/setfiltering/dbshop/supplyList/supplierType=corp/tm=all">Корп.</a></td>
+		</tr>
+	</table>
+	<input id="FilterFadeIn" type="button" class="button160" onclick="FilterFadeIn();" value="Расширенный фильтр" />
+</div>
+
+<br clear="all" />
+	
+</div>
+<form action="https://virtonomica.ru/vera/window/common/util/setfiltering/dbshop/supplyList"
+	  method="POST"
+	  name="unitSupplyFilterForm"
+	  id="filterForm" >
+<div id="supply_filter_form" class="displaynone">
+	<h1>Расширенный фильтр</h1>
+	<table width="100%">
+		<tr>
+			<td>Итоговая цена за ед.</td>
+			<td>от  <input type="text" name="total_price[from]" value="" /></td>
+			<td>до <input type="text" name="total_price[to]" value="" /></td>
+		</tr>
+		<tr>
+			<td>Качество</td>
+			<td>от  <input type="text" name="quality[from]" value="" /></td>
+			<td>до <input type="text" name="quality[to]" value="" /></td>
+		</tr>
+		<tr>
+			<td>Количество</td>
+			<td>от  <input type="text" name="quantity[from]" value="1" /></td>
+			<td></td>
+		</tr>
+		<tr>
+						<td>Свободно</td>
+			<td>от  <input type="text" name="free_for_buy[from]" value="1" /></td>
+			<td></td>
+		</tr>
+				<tr>
+			<td>Значение бренда</td>
+			<td>от  <input type="text" name="brand_value[from]" value="" /> </td>
+			<td>до <input type="text" name="brand_value[to]" value="" /></td>
+		</tr>
+			</table>
+	<input type="button" class="button160 undo" onclick="clearFilter();" value="Отменить фильтр" />
+	<input type="button" class="button160 continue" onclick="setFilter();" value="Фильтровать" />
+	<div class="close" onclick="closeFilter()"></div>
+</div></form>
+<div id="supply_content">
+
+
+<table class="unit-list-2014">
+	<thead>
+		<tr>
+									
+			<th colspan="3" onmouseover="this.className = 'filter_light' " onmouseout="this.className = ''" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/unit_name/asc');"><div class="field_title">Поставщик<div class="asc" title="сортировка по возрастанию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/unit_name/asc" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/unit_name/asc');"><img src="/img/up_gr_sort.png"></a></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/unit_name/desc" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/unit_name/desc');"><img src="/img/down_gr_sort.png"></a></div></div></th>			<th colspan="1" onmouseover="this.className = 'filter_light' " onmouseout="this.className = ''" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/free_for_buy/asc');"><div class="field_title">Cвободно<div class="asc" title="сортировка по возрастанию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/free_for_buy/asc" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/free_for_buy/asc');"><img src="/img/up_gr_sort.png"></a></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/free_for_buy/desc" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/free_for_buy/desc');"><img src="/img/down_gr_sort.png"></a></div></div><span class="subvalue">На складе</span></th>			<th onmouseover="this.className = 'filter_light' " onmouseout="this.className = ''" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/price/asc');"><div class="field_title">Цена поставщика<div class="asc" title="сортировка по возрастанию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/price/asc" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/price/asc');"><img src="/img/up_gr_sort.png"></a></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/price/desc" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/price/desc');"><img src="/img/down_gr_sort.png"></a></div></div></th>			<th class="active_sort " onmouseover="this.className = 'filter_light' " onmouseout="this.className = 'active_sort '" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/total_cost/desc');"><div class="field_title">Цена<div class="asc hide_active" title="сортировка по возрастанию"><img src="/img/up_wh_sort.png"></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/total_cost/desc" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/total_cost/desc');"><img src="/img/down_gr_sort.png"></a></div></div></th>			<th onmouseover="this.className = 'filter_light' " onmouseout="this.className = ''" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/quality/asc');"><div class="field_title">Качество<div class="asc" title="сортировка по возрастанию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/quality/asc" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/quality/asc');"><img src="/img/up_gr_sort.png"></a></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/quality/desc" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/quality/desc');"><img src="/img/down_gr_sort.png"></a></div></div></th>						<th onmouseover="this.className = 'filter_light' " onmouseout="this.className = ''" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/brand_value/asc');"><div class="field_title">Бренд<div class="asc" title="сортировка по возрастанию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/brand_value/asc" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/brand_value/asc');"><img src="/img/up_gr_sort.png"></a></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/brand_value/desc" onclick="return sortingClick('https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/brand_value/desc');"><img src="/img/down_gr_sort.png"></a></div></div></th>						<th>
+				<div class="field_title"><div class="spec" style="cursor: pointer;" onclick="this.style.cursor='wait'; body.style.cursor='wait'; setCookie('oldschool_supply_form', 'yes', 365); location.reload();" title="изменить режим отображения"><img src="/img/zoom-in.png"></div></div>
+			</th>
+			
+					</tr>
+	</thead>
+	<tbody>
+			
+		<script>
+
+			offer[8551914] =
+				  {'unit'    : 7308555,
+				   'price'   : 473.21,
+				   'price_contract'   : 420,
+				   'quality' : 1,
+				   'free4buy': 15262,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8551914" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7308555">Промтовары</a>
+				<br />
+				<i><b>ConSTAR-t Трейд</b> :: Склад :: Херсон</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="ConSTAR-t Трейд" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						8 414			<br/>
+			<i>15 262</i>
+					</td>
+		
+				<td class="start_price">$420.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$473.21			<span>
+				Цена: $420.00				<br/>
+				доставка: $2.81				<br/>
+				таможня: $50.40			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						1.00					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8551914, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9480351] =
+				  {'unit'    : 8617635,
+				   'price'   : 502.54,
+				   'price_contract'   : 501,
+				   'quality' : 10.2178915027749,
+				   'free4buy': 4018,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9480351" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8617635">Базар Швеция</a>
+				<br />
+				<i><b>Корпорация Выдравлика</b> :: Склад :: Худдинге</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Корпорация Выдравлика" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						3 967			<br/>
+			<i>4 018</i>
+					</td>
+		
+				<td class="start_price">$501.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$502.54			<span>
+				Цена: $501.00				<br/>
+				доставка: $1.54				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						10.22					</td>
+				<td class="supply_data">
+						0.04					</td>
+				<td class="choose" onclick="showOrderForm(9480351, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9504715] =
+				  {'unit'    : 8874650,
+				   'price'   : 691.82,
+				   'price_contract'   : 690,
+				   'quality' : 9.30848761700216,
+				   'free4buy': 2188,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9504715" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8874650">Фольктдрект №1</a>
+				<br />
+				<i><b>Wolat Ltd.</b> :: Мануфактура национальной одежды :: Сундсвалль</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Wolat Ltd." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						1 585			<br/>
+			<i>2 188</i>
+					</td>
+		
+				<td class="start_price">$690.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$691.82			<span>
+				Цена: $690.00				<br/>
+				доставка: $1.82				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						9.31					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9504715, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8677135] =
+				  {'unit'    : 7943130,
+				   'price'   : 801.31,
+				   'price_contract'   : 800,
+				   'quality' : 7.16409964681725,
+				   'free4buy': 16402,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8677135" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7943130">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Kassija Ltd.</b> :: Мануфактура национальной одежды :: Евле</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Kassija Ltd." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						16 402			<br/>
+			<i>16 402</i>
+					</td>
+		
+				<td class="start_price">$800.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$801.31			<span>
+				Цена: $800.00				<br/>
+				доставка: $1.31				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						7.16					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8677135, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9343881] =
+				  {'unit'    : 8719424,
+				   'price'   : 836.54,
+				   'price_contract'   : 835,
+				   'quality' : 9.05784015786965,
+				   'free4buy': 28319,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9343881" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8719424">СВОЯ ТЕХНИКА ИГРУШКИ</a>
+				<br />
+				<i><b>Vetgarrik Ltd.</b> :: Склад :: Худдинге</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Vetgarrik Ltd." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						28 319			<br/>
+			<i>28 319</i>
+					</td>
+		
+				<td class="start_price">$835.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$836.54			<span>
+				Цена: $835.00				<br/>
+				доставка: $1.54				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						9.06					</td>
+				<td class="supply_data">
+						0.04					</td>
+				<td class="choose" onclick="showOrderForm(9343881, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8752095] =
+				  {'unit'    : 8041338,
+				   'price'   : 1000.19,
+				   'price_contract'   : 1000,
+				   'quality' : 21.3374371317787,
+				   'free4buy': 2865,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8752095" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8041338">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Orlova Инвест</b> :: Мануфактура национальной одежды :: Мальме</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Orlova Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						2 395			<br/>
+			<i>2 865</i>
+					</td>
+		
+				<td class="start_price">$1 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 000.19			<span>
+				Цена: $1 000.00				<br/>
+				доставка: $0.19				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						21.34					</td>
+				<td class="supply_data">
+						1.42					</td>
+				<td class="choose" onclick="showOrderForm(8752095, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8571881] =
+				  {'unit'    : 7825526,
+				   'price'   : 1000.32,
+				   'price_contract'   : 1000,
+				   'quality' : 17.1052257810109,
+				   'free4buy': 43240,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8571881" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7825526">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Чебурашка</b> :: Мануфактура национальной одежды :: Хельсингборг</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Чебурашка" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						43 240			<br/>
+			<i>43 240</i>
+					</td>
+		
+				<td class="start_price">$1 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 000.32			<span>
+				Цена: $1 000.00				<br/>
+				доставка: $0.32				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						17.11					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8571881, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8809925] =
+				  {'unit'    : 8114072,
+				   'price'   : 1000.86,
+				   'price_contract'   : 1000,
+				   'quality' : 15.9721850736169,
+				   'free4buy': 979,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8809925" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8114072">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Orlova Инвест</b> :: Мануфактура национальной одежды :: Гетеборг</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Orlova Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						412			<br/>
+			<i>979</i>
+					</td>
+		
+				<td class="start_price">$1 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 000.86			<span>
+				Цена: $1 000.00				<br/>
+				доставка: $0.86				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						15.97					</td>
+				<td class="supply_data">
+						1.42					</td>
+				<td class="choose" onclick="showOrderForm(8809925, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8824495] =
+				  {'unit'    : 8129993,
+				   'price'   : 1001.34,
+				   'price_contract'   : 1000,
+				   'quality' : 7.94223688883354,
+				   'free4buy': 3715,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8824495" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8129993">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Orlova Инвест</b> :: Мануфактура национальной одежды :: Норрчепинг</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Orlova Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						3 705			<br/>
+			<i>3 715</i>
+					</td>
+		
+				<td class="start_price">$1 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 001.34			<span>
+				Цена: $1 000.00				<br/>
+				доставка: $1.34				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						7.94					</td>
+				<td class="supply_data">
+						1.42					</td>
+				<td class="choose" onclick="showOrderForm(8824495, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8658840] =
+				  {'unit'    : 7922380,
+				   'price'   : 1001.57,
+				   'price_contract'   : 1000,
+				   'quality' : 14.0176343036005,
+				   'free4buy': 1963,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8658840" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7922380">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Orlova Инвест</b> :: Мануфактура национальной одежды :: Уппсала</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Orlova Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						1 518			<br/>
+			<i>1 963</i>
+					</td>
+		
+				<td class="start_price">$1 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 001.57			<span>
+				Цена: $1 000.00				<br/>
+				доставка: $1.57				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						14.02					</td>
+				<td class="supply_data">
+						1.42					</td>
+				<td class="choose" onclick="showOrderForm(8658840, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8743268] =
+				  {'unit'    : 8028314,
+				   'price'   : 1002.02,
+				   'price_contract'   : 1000,
+				   'quality' : 19.1129629273731,
+				   'free4buy': 9369,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8743268" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8028314">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Orlova Инвест</b> :: Мануфактура национальной одежды :: Умео</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Orlova Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						9 053			<br/>
+			<i>9 369</i>
+					</td>
+		
+				<td class="start_price">$1 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 002.02			<span>
+				Цена: $1 000.00				<br/>
+				доставка: $2.02				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						19.11					</td>
+				<td class="supply_data">
+						1.42					</td>
+				<td class="choose" onclick="showOrderForm(8743268, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8713281] =
+				  {'unit'    : 7994024,
+				   'price'   : 1002.02,
+				   'price_contract'   : 1000,
+				   'quality' : 18.8301602485648,
+				   'free4buy': 12920,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8713281" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7994024">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Orlova Инвест</b> :: Мануфактура национальной одежды :: Лулео</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Orlova Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						12 910			<br/>
+			<i>12 920</i>
+					</td>
+		
+				<td class="start_price">$1 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 002.02			<span>
+				Цена: $1 000.00				<br/>
+				доставка: $2.02				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						18.83					</td>
+				<td class="supply_data">
+						1.42					</td>
+				<td class="choose" onclick="showOrderForm(8713281, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8993193] =
+				  {'unit'    : 8310285,
+				   'price'   : 1252.02,
+				   'price_contract'   : 1250,
+				   'quality' : 13.8446810453053,
+				   'free4buy': 23155,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8993193" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8310285">Склад</a>
+				<br />
+				<i><b>Petrollium_1 Ltd.</b> :: Склад :: Лулео</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/pub/company/symbol/vera/9/8284859_small" align="middle" title="Petrollium_1 Ltd." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						23 155			<br/>
+			<i>23 155</i>
+					</td>
+		
+				<td class="start_price">$1 250.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 252.02			<span>
+				Цена: $1 250.00				<br/>
+				доставка: $2.02				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						13.84					</td>
+				<td class="supply_data">
+						0.57					</td>
+				<td class="choose" onclick="showOrderForm(8993193, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8630465] =
+				  {'unit'    : 7887722,
+				   'price'   : 1400.32,
+				   'price_contract'   : 1400,
+				   'quality' : 3.55830187229511,
+				   'free4buy': 4534,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8630465" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7887722">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>АБК Инвест</b> :: Мануфактура национальной одежды :: Хельсингборг</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="АБК Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						4 534			<br/>
+			<i>4 534</i>
+					</td>
+		
+				<td class="start_price">$1 400.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 400.32			<span>
+				Цена: $1 400.00				<br/>
+				доставка: $0.32				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						3.56					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8630465, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8681607] =
+				  {'unit'    : 7950346,
+				   'price'   : 1501.46,
+				   'price_contract'   : 1500,
+				   'quality' : 18.817850973657,
+				   'free4buy': 9764,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8681607" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7950346">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Orlova Инвест</b> :: Мануфактура национальной одежды :: Эребру</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Orlova Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						9 764			<br/>
+			<i>9 764</i>
+					</td>
+		
+				<td class="start_price">$1 500.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 501.46			<span>
+				Цена: $1 500.00				<br/>
+				доставка: $1.46				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						18.82					</td>
+				<td class="supply_data">
+						1.42					</td>
+				<td class="choose" onclick="showOrderForm(8681607, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8735233] =
+				  {'unit'    : 8018468,
+				   'price'   : 1501.82,
+				   'price_contract'   : 1500,
+				   'quality' : 19.9020564579121,
+				   'free4buy': 12953,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8735233" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8018468">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Orlova Инвест</b> :: Мануфактура национальной одежды :: Сундсвалль</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Orlova Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						12 953			<br/>
+			<i>12 953</i>
+					</td>
+		
+				<td class="start_price">$1 500.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 501.82			<span>
+				Цена: $1 500.00				<br/>
+				доставка: $1.82				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						19.90					</td>
+				<td class="supply_data">
+						1.42					</td>
+				<td class="choose" onclick="showOrderForm(8735233, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9195957] =
+				  {'unit'    : 8480428,
+				   'price'   : 1652.14,
+				   'price_contract'   : 1500,
+				   'quality' : 39.84443,
+				   'free4buy': 24612,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9195957" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8480428">Италия 4</a>
+				<br />
+				<i><b>RALF Inc.</b> :: Мануфактура национальной одежды :: Катания</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="RALF Inc." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						156			<br/>
+			<i>24 612</i>
+					</td>
+		
+				<td class="start_price">$1 500.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 652.14			<span>
+				Цена: $1 500.00				<br/>
+				доставка: $2.14				<br/>
+				таможня: $150.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						39.84					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9195957, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9409845] =
+				  {'unit'    : 7962744,
+				   'price'   : 1701.57,
+				   'price_contract'   : 1700,
+				   'quality' : 14.9733214820547,
+				   'free4buy': 16565,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9409845" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7962744">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>SELIJA</b> :: Мануфактура национальной одежды :: Уппсала</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="SELIJA" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						16 173			<br/>
+			<i>16 565</i>
+					</td>
+		
+				<td class="start_price">$1 700.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 701.57			<span>
+				Цена: $1 700.00				<br/>
+				доставка: $1.57				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						14.97					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9409845, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9400294] =
+				  {'unit'    : 8763430,
+				   'price'   : 1906.51,
+				   'price_contract'   : 1700,
+				   'quality' : 1.06857004873449,
+				   'free4buy': 30395,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9400294" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8763430">Склад</a>
+				<br />
+				<i><b>Kassija Ltd.</b> :: Склад :: Одесса</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Kassija Ltd." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						30 245			<br/>
+			<i>30 395</i>
+					</td>
+		
+				<td class="start_price">$1 700.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 906.51			<span>
+				Цена: $1 700.00				<br/>
+				доставка: $2.51				<br/>
+				таможня: $204.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						1.07					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9400294, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9189478] =
+				  {'unit'    : 8480436,
+				   'price'   : 1981.78,
+				   'price_contract'   : 1800,
+				   'quality' : 42.69397,
+				   'free4buy': 32026,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9189478" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8480436">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>RALF Inc.</b> :: Мануфактура национальной одежды :: Рим</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="RALF Inc." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						6 716			<br/>
+			<i>32 026</i>
+					</td>
+		
+				<td class="start_price">$1 800.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 981.78			<span>
+				Цена: $1 800.00				<br/>
+				доставка: $1.78				<br/>
+				таможня: $180.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						42.69					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9189478, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9233369] =
+				  {'unit'    : 8000758,
+				   'price'   : 2000.19,
+				   'price_contract'   : 2000,
+				   'quality' : 47.926207351672,
+				   'free4buy': 23086,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9233369" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8000758">Мануфактура национальной одежды 17</a>
+				<br />
+				<i><b>АО «BLESK»</b> :: Мануфактура национальной одежды :: Мальме</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="АО «BLESK»" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						21 095			<br/>
+			<i>23 086</i>
+					</td>
+		
+				<td class="start_price">$2 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 000.19			<span>
+				Цена: $2 000.00				<br/>
+				доставка: $0.19				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						47.93					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9233369, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9403051] =
+				  {'unit'    : 8766763,
+				   'price'   : 2000.86,
+				   'price_contract'   : 2000,
+				   'quality' : 51.6148431363568,
+				   'free4buy': 26206,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9403051" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8766763">Склад товаров (Одежда)</a>
+				<br />
+				<i><b>Lupsor Corp.</b> :: Склад :: Гетеборг</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Lupsor Corp." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						21 206			<br/>
+			<i>26 206</i>
+					</td>
+		
+				<td class="start_price">$2 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 000.86			<span>
+				Цена: $2 000.00				<br/>
+				доставка: $0.86				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						51.61					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9403051, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8528956] =
+				  {'unit'    : 6448320,
+				   'price'   : 2004.07,
+				   'price_contract'   : 1750,
+				   'quality' : 9.30370937566977,
+				   'free4buy': 19388,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8528956" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/6448320">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Волк Трейд</b> :: Мануфактура национальной одежды :: Мехикали</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Волк Трейд" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						16 280			<br/>
+			<i>19 388</i>
+					</td>
+		
+				<td class="start_price">$1 750.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 004.07			<span>
+				Цена: $1 750.00				<br/>
+				доставка: $9.07				<br/>
+				таможня: $245.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						9.30					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8528956, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9567449] =
+				  {'unit'    : 8946145,
+				   'price'   : 2074.38,
+				   'price_contract'   : 1850,
+				   'quality' : 8.84869754269166,
+				   'free4buy': 5549,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9567449" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8946145">Вещевой на продажу</a>
+				<br />
+				<i><b>Vvs70 Ltd.</b> :: Склад :: Винница</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Vvs70 Ltd." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						5 549			<br/>
+			<i>5 549</i>
+					</td>
+		
+				<td class="start_price">$1 850.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 074.38			<span>
+				Цена: $1 850.00				<br/>
+				доставка: $2.38				<br/>
+				таможня: $222.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						8.85					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9567449, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9292278] =
+				  {'unit'    : 8465349,
+				   'price'   : 2094.72,
+				   'price_contract'   : 1900,
+				   'quality' : 31.4399737990646,
+				   'free4buy': 111200,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9292278" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8465349">Склад</a>
+				<br />
+				<i><b>RALF Inc.</b> :: Склад :: Нукус</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="RALF Inc." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						110 400			<br/>
+			<i>111 200</i>
+					</td>
+		
+				<td class="start_price">$1 900.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 094.72			<span>
+				Цена: $1 900.00				<br/>
+				доставка: $4.72				<br/>
+				таможня: $190.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						31.44					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9292278, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9401338] =
+				  {'unit'    : 8766566,
+				   'price'   : 2101.54,
+				   'price_contract'   : 2100,
+				   'quality' : 23.3553159976105,
+				   'free4buy': 24,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9401338" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8766566">Склад Худдинге PRO</a>
+				<br />
+				<i><b>BORYSPIL UA</b> :: Склад :: Худдинге</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="BORYSPIL UA" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						24			<br/>
+			<i>24</i>
+					</td>
+		
+				<td class="start_price">$2 100.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 101.54			<span>
+				Цена: $2 100.00				<br/>
+				доставка: $1.54				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						23.36					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9401338, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8999216] =
+				  {'unit'    : 7208380,
+				   'price'   : 2149.03,
+				   'price_contract'   : 1895,
+				   'quality' : 52.9146955623506,
+				   'free4buy': 461389,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8999216" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7208380">Склад РАСПРОДАЖА ОСТАТКОВ</a>
+				<br />
+				<i><b>АО «BLESK»</b> :: Склад :: Владивосток</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="АО «BLESK»" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						435 489			<br/>
+			<i>461 389</i>
+					</td>
+		
+				<td class="start_price">$1 895.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 149.03			<span>
+				Цена: $1 895.00				<br/>
+				доставка: $7.68				<br/>
+				таможня: $246.35			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						52.91					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8999216, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8949709] =
+				  {'unit'    : 8250098,
+				   'price'   : 2416.80,
+				   'price_contract'   : 2100,
+				   'quality' : 30.5739991350503,
+				   'free4buy': 88273,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8949709" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8250098">Фольктдрект №14</a>
+				<br />
+				<i><b>RALF Inc.</b> :: Мануфактура национальной одежды :: София</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="RALF Inc." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						87 123			<br/>
+			<i>88 273</i>
+					</td>
+		
+				<td class="start_price">$2 100.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 416.80			<span>
+				Цена: $2 100.00				<br/>
+				доставка: $1.80				<br/>
+				таможня: $315.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						30.57					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8949709, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9485521] =
+				  {'unit'    : 8835663,
+				   'price'   : 2500.86,
+				   'price_contract'   : 2500,
+				   'quality' : 46.4196,
+				   'free4buy': 27612,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9485521" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8835663">Склад</a>
+				<br />
+				<i><b>Ариман</b> :: Склад :: Гетеборг</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Ариман" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						27 612			<br/>
+			<i>27 612</i>
+					</td>
+		
+				<td class="start_price">$2 500.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 500.86			<span>
+				Цена: $2 500.00				<br/>
+				доставка: $0.86				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						46.42					</td>
+				<td class="supply_data">
+						0.45					</td>
+				<td class="choose" onclick="showOrderForm(9485521, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8955717] =
+				  {'unit'    : 8023792,
+				   'price'   : 2502.02,
+				   'price_contract'   : 2500,
+				   'quality' : 38.8988104376408,
+				   'free4buy': 11854,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8955717" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8023792">Мануфактура национальной одежды 15</a>
+				<br />
+				<i><b>AO Niki_WOK Трейд</b> :: Мануфактура национальной одежды :: Лулео</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="AO Niki_WOK Трейд" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						11 004			<br/>
+			<i>11 854</i>
+					</td>
+		
+				<td class="start_price">$2 500.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 502.02			<span>
+				Цена: $2 500.00				<br/>
+				доставка: $2.02				<br/>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						38.90					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8955717, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8712173] =
+				  {'unit'    : 7223483,
+				   'price'   : 2601.06,
+				   'price_contract'   : 2300,
+				   'quality' : 42.6913742605046,
+				   'free4buy': 3292832,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8712173" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7223483">Склад ФАРТУКИ 41+ / ЗОНТЫ 35+</a>
+				<br />
+				<i><b>Region-22</b> :: Склад :: Великие Луки</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Region-22" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						3 272 263			<br/>
+			<i>3 292 832</i>
+					</td>
+		
+				<td class="start_price">$2 300.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 601.06			<span>
+				Цена: $2 300.00				<br/>
+				доставка: $2.06				<br/>
+				таможня: $299.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						42.69					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8712173, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8806786] =
+				  {'unit'    : 8117516,
+				   'price'   : 2726.57,
+				   'price_contract'   : 2499.99,
+				   'quality' : 24.9436308257432,
+				   'free4buy': 2423828,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8806786" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8117516">2</a>
+				<br />
+				<i><b>BORYSPIL UA</b> :: Склад :: Елгава</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="BORYSPIL UA" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						<u>10 000</u>
+			<br/>
+			<i>2 423 828</i>
+			<span>Установлены ограничения на максимальный объём поставок по одному контракту</span>
+					</td>
+		
+				<td class="start_price">$2 499.99</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 726.57			<span>
+				Цена: $2 499.99				<br/>
+				доставка: $1.58				<br/>
+				таможня: $225.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						24.94					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8806786, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8681723] =
+				  {'unit'    : 7948522,
+				   'price'   : 2777.04,
+				   'price_contract'   : 2500,
+				   'quality' : 28.0168769349774,
+				   'free4buy': 8430929,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8681723" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7948522">Магазин</a>
+				<br />
+				<i><b>Пустота</b> :: Склад :: Волос</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Пустота" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						8 393 889			<br/>
+			<i>8 430 929</i>
+					</td>
+		
+				<td class="start_price">$2 500.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 777.04			<span>
+				Цена: $2 500.00				<br/>
+				доставка: $2.04				<br/>
+				таможня: $275.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						28.02					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8681723, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9592621] =
+				  {'unit'    : 8268797,
+				   'price'   : 3271.87,
+				   'price_contract'   : 3000,
+				   'quality' : 38.5528165021887,
+				   'free4buy': 13489407,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9592621" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8268797">Склад</a>
+				<br />
+				<i><b>ОАО Стандарт</b> :: Склад :: Харлем</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="ОАО Стандарт" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						13 455 665			<br/>
+			<i>13 489 407</i>
+					</td>
+		
+				<td class="start_price">$3 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$3 271.87			<span>
+				Цена: $3 000.00				<br/>
+				доставка: $1.87				<br/>
+				таможня: $270.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						38.55					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9592621, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9582931] =
+				  {'unit'    : 8270894,
+				   'price'   : 3361.27,
+				   'price_contract'   : 3000,
+				   'quality' : 37.9023043873487,
+				   'free4buy': 1460232,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9582931" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8270894">Склад Польша</a>
+				<br />
+				<i><b>ОАО Стандарт</b> :: Склад :: Радом</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="ОАО Стандарт" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						1 460 232			<br/>
+			<i>1 460 232</i>
+					</td>
+		
+				<td class="start_price">$3 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$3 361.27			<span>
+				Цена: $3 000.00				<br/>
+				доставка: $1.27				<br/>
+				таможня: $360.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						37.90					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9582931, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8497856] =
+				  {'unit'    : 7089475,
+				   'price'   : 3394.95,
+				   'price_contract'   : 3199.99,
+				   'quality' : 8.2126452915563,
+				   'free4buy': 542504,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8497856" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7089475">Промтовары</a>
+				<br />
+				<i><b>BORYSPIL UA</b> :: Склад :: Сумгаит</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="BORYSPIL UA" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						<u>100</u>
+			<br/>
+			<i>542 504</i>
+			<span>Установлены ограничения на максимальный объём поставок по одному контракту</span>
+					</td>
+		
+				<td class="start_price">$3 199.99</td>
+				
+				
+		<td class="price_w_tooltip">
+			$3 394.95			<span>
+				Цена: $3 199.99				<br/>
+				доставка: $2.96				<br/>
+				таможня: $192.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						8.21					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8497856, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8478587] =
+				  {'unit'    : 7437671,
+				   'price'   : 3922.81,
+				   'price_contract'   : 3500,
+				   'quality' : 19.2477568863532,
+				   'free4buy': 224450,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8478587" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7437671">AMG</a>
+				<br />
+				<i><b>AMG</b> :: Склад :: Херсон</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="AMG" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						224 450			<br/>
+			<i>224 450</i>
+					</td>
+		
+				<td class="start_price">$3 500.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$3 922.81			<span>
+				Цена: $3 500.00				<br/>
+				доставка: $2.81				<br/>
+				таможня: $420.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						19.25					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8478587, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9596085] =
+				  {'unit'    : 8803931,
+				   'price'   : 3987.06,
+				   'price_contract'   : 3590,
+				   'quality' : 8.91142404626544,
+				   'free4buy': 4286,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9596085" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8803931">Склад Одежда Палдиски</a>
+				<br />
+				<i><b>Dentarasov77 Ltd.</b> :: Склад :: Палдиски</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Dentarasov77 Ltd." />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						4 286			<br/>
+			<i>4 286</i>
+					</td>
+		
+				<td class="start_price">$3 590.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$3 987.06			<span>
+				Цена: $3 590.00				<br/>
+				доставка: $2.16				<br/>
+				таможня: $394.90			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						8.91					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9596085, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9148893] =
+				  {'unit'    : 8448667,
+				   'price'   : 4014.24,
+				   'price_contract'   : 3550,
+				   'quality' : 39.9138061013584,
+				   'free4buy': 2025755,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9148893" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8448667">888</a>
+				<br />
+				<i><b>Пустота</b> :: Мануфактура национальной одежды :: Воронеж</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Пустота" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						2 024 755			<br/>
+			<i>2 025 755</i>
+					</td>
+		
+				<td class="start_price">$3 550.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$4 014.24			<span>
+				Цена: $3 550.00				<br/>
+				доставка: $2.74				<br/>
+				таможня: $461.50			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						39.91					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9148893, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8479361] =
+				  {'unit'    : 7049567,
+				   'price'   : 4404.72,
+				   'price_contract'   : 4000,
+				   'quality' : 71.3358564490645,
+				   'free4buy': 2416640,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8479361" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7049567">Склад_товаров_потребления</a>
+				<br />
+				<i><b>Новая Эра</b> :: Склад :: Нукус</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Новая Эра" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						2 378 094			<br/>
+			<i>2 416 640</i>
+					</td>
+		
+				<td class="start_price">$4 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$4 404.72			<span>
+				Цена: $4 000.00				<br/>
+				доставка: $4.72				<br/>
+				таможня: $400.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						71.34					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8479361, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8558887] =
+				  {'unit'    : 4508086,
+				   'price'   : 4405.52,
+				   'price_contract'   : 4000,
+				   'quality' : 70.704,
+				   'free4buy': 45,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8558887" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/4508086">Продажи 1811 ПРОМТОВАРЫ Андижан</a>
+				<br />
+				<i><b>masterF</b> :: Склад :: Андижан</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="masterF" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						<u>10</u>
+			<br/>
+			<i>45</i>
+			<span>Установлены ограничения на максимальный объём поставок по одному контракту</span>
+					</td>
+		
+				<td class="start_price">$4 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$4 405.52			<span>
+				Цена: $4 000.00				<br/>
+				доставка: $5.52				<br/>
+				таможня: $400.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						70.70					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8558887, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8809155] =
+				  {'unit'    : 8118942,
+				   'price'   : 4521.88,
+				   'price_contract'   : 4000,
+				   'quality' : 54.1864509205148,
+				   'free4buy': 48879,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8809155" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8118942">Склад</a>
+				<br />
+				<i><b>Рэйнбол</b> :: Склад :: Санкт-Петербург</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Рэйнбол" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						46 429			<br/>
+			<i>48 879</i>
+					</td>
+		
+				<td class="start_price">$4 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$4 521.88			<span>
+				Цена: $4 000.00				<br/>
+				доставка: $1.88				<br/>
+				таможня: $520.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						54.19					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8809155, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8864113] =
+				  {'unit'    : 8179029,
+				   'price'   : 5079.27,
+				   'price_contract'   : 4743.9,
+				   'quality' : 75.6130987510283,
+				   'free4buy': 2010072,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8864113" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8179029">Склад Пром</a>
+				<br />
+				<i><b>Nomos</b> :: Склад :: Темиртау</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Nomos" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						<u>2 000</u>
+			<br/>
+			<i>2 010 072</i>
+			<span>Установлены ограничения на максимальный объём поставок по одному контракту</span>
+					</td>
+		
+				<td class="start_price">$4 743.90</td>
+				
+				
+		<td class="price_w_tooltip">
+			$5 079.27			<span>
+				Цена: $4 743.90				<br/>
+				доставка: $3.30				<br/>
+				таможня: $332.07			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						75.61					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8864113, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8479238] =
+				  {'unit'    : 5742249,
+				   'price'   : 6722.80,
+				   'price_contract'   : 5999.99,
+				   'quality' : 16.8029856927246,
+				   'free4buy': 10108,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8479238" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/5742249">ПРОМ Укр.пд</a>
+				<br />
+				<i><b>BORYSPIL UA</b> :: Склад :: Херсон</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="BORYSPIL UA" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						<u>100</u>
+			<br/>
+			<i>10 108</i>
+			<span>Установлены ограничения на максимальный объём поставок по одному контракту</span>
+					</td>
+		
+				<td class="start_price">$5 999.99</td>
+				
+				
+		<td class="price_w_tooltip">
+			$6 722.80			<span>
+				Цена: $5 999.99				<br/>
+				доставка: $2.81				<br/>
+				таможня: $720.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						16.80					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8479238, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8496321] =
+				  {'unit'    : 7089460,
+				   'price'   : 6782.45,
+				   'price_contract'   : 5999.99,
+				   'quality' : 12.7830186237477,
+				   'free4buy': 634269,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8496321" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7089460">№  2</a>
+				<br />
+				<i><b>BORYSPIL UA</b> :: Склад :: Москва</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="BORYSPIL UA" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						<u>100</u>
+			<br/>
+			<i>634 269</i>
+			<span>Установлены ограничения на максимальный объём поставок по одному контракту</span>
+					</td>
+		
+				<td class="start_price">$5 999.99</td>
+				
+				
+		<td class="price_w_tooltip">
+			$6 782.45			<span>
+				Цена: $5 999.99				<br/>
+				доставка: $2.46				<br/>
+				таможня: $780.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						12.78					</td>
+				<td class="supply_data">
+						0.47					</td>
+				<td class="choose" onclick="showOrderForm(8496321, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8635870] =
+				  {'unit'    : 5814138,
+				   'price'   : 6957.96,
+				   'price_contract'   : 6500,
+				   'quality' : 76.5422855971731,
+				   'free4buy': 725116,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8635870" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/5814138">Подопытный. Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Понарошку</b> :: Мануфактура национальной одежды :: Петропавловск</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Понарошку" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						563 116			<br/>
+			<i>725 116</i>
+					</td>
+		
+				<td class="start_price">$6 500.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$6 957.96			<span>
+				Цена: $6 500.00				<br/>
+				доставка: $2.96				<br/>
+				таможня: $455.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						76.54					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8635870, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8747407] =
+				  {'unit'    : 8044528,
+				   'price'   : 7346.61,
+				   'price_contract'   : 6500,
+				   'quality' : 76.4828477990375,
+				   'free4buy': 1905902,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8747407" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8044528">[ПромСклад] Сбыт. Литва</a>
+				<br />
+				<i><b>Понарошку</b> :: Склад :: Каунас</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Понарошку" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						1 904 902			<br/>
+			<i>1 905 902</i>
+					</td>
+		
+				<td class="start_price">$6 500.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$7 346.61			<span>
+				Цена: $6 500.00				<br/>
+				доставка: $1.61				<br/>
+				таможня: $845.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						76.48					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8747407, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9188925] =
+				  {'unit'    : 5797747,
+				   'price'   : 8128.13,
+				   'price_contract'   : 7122,
+				   'quality' : 44.1972979572579,
+				   'free4buy': 246534,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9188925" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/5797747">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>Форсаж</b> :: Мануфактура национальной одежды :: Чиуауа</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Форсаж" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						235 583			<br/>
+			<i>246 534</i>
+					</td>
+		
+				<td class="start_price">$7 122.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$8 128.13			<span>
+				Цена: $7 122.00				<br/>
+				доставка: $9.05				<br/>
+				таможня: $997.08			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						44.20					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9188925, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9249034] =
+				  {'unit'    : 8549159,
+				   'price'   : 9186.70,
+				   'price_contract'   : 8200,
+				   'quality' : 17.916,
+				   'free4buy': 200,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9249034" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8549159">Склад Промышленные товары-1 092 695</a>
+				<br />
+				<i><b>Regints</b> :: Склад :: Полтава</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Regints" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						200			<br/>
+			<i>200</i>
+					</td>
+		
+				<td class="start_price">$8 200.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$9 186.70			<span>
+				Цена: $8 200.00				<br/>
+				доставка: $2.70				<br/>
+				таможня: $984.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						17.92					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9249034, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9248927] =
+				  {'unit'    : 8565497,
+				   'price'   : 9297.20,
+				   'price_contract'   : 8300,
+				   'quality' : 28.5907495665513,
+				   'free4buy': 371,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9248927" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8565497">Склад Промышленные товары</a>
+				<br />
+				<i><b>Regints</b> :: Склад :: Кернозя</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Regints" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						371			<br/>
+			<i>371</i>
+					</td>
+		
+				<td class="start_price">$8 300.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$9 297.20			<span>
+				Цена: $8 300.00				<br/>
+				доставка: $1.20				<br/>
+				таможня: $996.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						28.59					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9248927, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8481111] =
+				  {'unit'    : 7584418,
+				   'price'   : 13081.76,
+				   'price_contract'   : 12000,
+				   'quality' : 51.2009583381796,
+				   'free4buy': 60625337,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8481111" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7584418">Склад</a>
+				<br />
+				<i><b>zvk91 Инвест</b> :: Склад :: Даугавпилс</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="zvk91 Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						60 625 337			<br/>
+			<i>60 625 337</i>
+					</td>
+		
+				<td class="start_price">$12 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$13 081.76			<span>
+				Цена: $12 000.00				<br/>
+				доставка: $1.76				<br/>
+				таможня: $1 080.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						51.20					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8481111, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8481119] =
+				  {'unit'    : 7606525,
+				   'price'   : 15261.76,
+				   'price_contract'   : 14000,
+				   'quality' : 59.7385480548651,
+				   'free4buy': 560649,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8481119" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7606525">Склад</a>
+				<br />
+				<i><b>zvk91 Инвест</b> :: Склад :: Даугавпилс</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="zvk91 Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						558 649			<br/>
+			<i>560 649</i>
+					</td>
+		
+				<td class="start_price">$14 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$15 261.76			<span>
+				Цена: $14 000.00				<br/>
+				доставка: $1.76				<br/>
+				таможня: $1 260.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						59.74					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8481119, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[9253577] =
+				  {'unit'    : 8592280,
+				   'price'   : 18191.36,
+				   'price_contract'   : 17000,
+				   'quality' : 33.6305218629615,
+				   'free4buy': 1150,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9253577" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8592280">Склад Промышленные товары-1301</a>
+				<br />
+				<i><b>Regints</b> :: Склад :: Осло</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="Regints" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						1 150			<br/>
+			<i>1 150</i>
+					</td>
+		
+				<td class="start_price">$17 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$18 191.36			<span>
+				Цена: $17 000.00				<br/>
+				доставка: $1.36				<br/>
+				таможня: $1 190.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						33.63					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9253577, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		
+		<script>
+
+			offer[8482426] =
+				  {'unit'    : 6274414,
+				   'price'   : 23733.61,
+				   'price_contract'   : 21000,
+				   'quality' : 13.7516963734175,
+				   'free4buy': 181473,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r8482426" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/6274414">Мануфактура национальной одежды</a>
+				<br />
+				<i><b>tolyao Инвест</b> :: Мануфактура национальной одежды :: Уфа</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="/img/1.gif" align="middle" title="tolyao Инвест" />
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						181 473			<br/>
+			<i>181 473</i>
+					</td>
+		
+				<td class="start_price">$21 000.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$23 733.61			<span>
+				Цена: $21 000.00				<br/>
+				доставка: $3.61				<br/>
+				таможня: $2 730.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						13.75					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(8482426, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	<tr>
+		</tbody>
+</table>
+
+<table width="100%" class="displaynone">
+<tr id="orderForm" class="orderFormStyle">
+	<td colspan="9" >
+		<form name="orderForm" onsubmit="$('#submitLink').click(); return false;" >
+		<fieldset class="contract" >
+			<div class="main" >
+				Контракт на закупку <input type="text" value="" id="amountInput" onblur="calculatePrice();" onkeyup="calculatePrice();" /> шт.				на сумму <span id="totalPrice">&nbsp;</span>
+			</div>
+			<div class="constraints">
+				<fieldset>
+					<legend>Дополнительные условия</legend>
+
+					<span class="contractConstraintsPrices">
+						<span class="contractConstraintPriceAbs hidden">
+							Прекратить поставку при повышении цены							до							<input type="text" value="0" id="priceConstraint" />
+						</span>
+						<span class="contractConstraintPriceRel">
+								Прекратить поставку при повышении цены								на								<select id="priceMarkUp" >
+																	<option value="0">никогда</option>
+																	<option value="1">5</option>
+																	<option value="2" selected="selected">10</option>
+																	<option value="3">20</option>
+																	<option value="4">50</option>
+																	<option value="5">100</option>
+																</select>
+						</span>
+					</span>
+
+					<select id="constraintPriceType" class="contractConstraintPriceType" name="unitSupplyData[constraintPriceType]" onchange="priceTypeChange();">
+						<option value="Rel" selected="selected">%</option>
+						<option value="Abs" >$</option>
+					</select>
+
+					<br />
+
+					Прекратить поставку при снижении качества ниже					<input type="text" value="0" id="qualityMin" /> 					
+					<br />
+					
+					<input type="checkbox" id="instant" style="width: 18px;"/><label for="instant">Разовая закупка</label>
+					
+										
+				</fieldset>
+
+			</div>
+			<div class="sign" >
+				<span class="pseudolink" id="submitLink" onclick="orderSupply();" >Заказать</span>
+			</div>
+
+		</fieldset>
+		</form>
+	</td>
+</tr>
+
+<tr id="ordered" class="ordered">
+	<td colspan="9" >
+		<div class="cancelOrder pseudolink" >Отменить заказ</div>
+		Оформлен заказ на поставку.		Размер партии: <strong><span class="orderedAmount">0</span> шт.</strong>. Сумма заказа: <strong class="orderedSum">0</strong>
+	</td>
+</tr>
+
+</table>
+
+
+</div>
+<div id="supplyFooter" >
+	
+<div style="MARGIN-TOP: 12px; FONT-SIZE: 11px !important;">
+
+		<ul class="pager_options pull-left">
+		<li>Показывать по:</li>
+		
+							
+		<li>
+			<a href="https://virtonomica.ru/vera/window/common/util/setpaging/dbshop/supplyList/10" >
+			10			</a>
+		</li>
+		
+										
+		<li>
+			<a href="https://virtonomica.ru/vera/window/common/util/setpaging/dbshop/supplyList/25" >
+			25			</a>
+		</li>
+		
+										
+		<li>
+			<a href="https://virtonomica.ru/vera/window/common/util/setpaging/dbshop/supplyList/50" >
+			50			</a>
+		</li>
+		
+										
+		<li>
+			<a href="https://virtonomica.ru/vera/window/common/util/setpaging/dbshop/supplyList/100" >
+			100			</a>
+		</li>
+		
+										
+		<li>
+			<a href="https://virtonomica.ru/vera/window/common/util/setpaging/dbshop/supplyList/200" >
+			200			</a>
+		</li>
+		
+											
+		<li class="selected">400</li>
+		
+							
+	</ul>
+	
+	<ul class="pager_list pull-right">
+		<li>Страница:</li>
+																<li class="selected">1</li>			
+																
+	</ul>
+
+</div>
+<div style="clear: both;"></div>	<div class="summary">Итого:  <strong><span class="orderedAmount">0</span> шт.</strong> На общую сумму: <strong class="orderedSum">0</strong></div>
+	<div class="close"><span class="pseudolink">Закрыть окно</span></div>
+</div>
+
+<script>
+$('#supplyFooter .close').click(function()
+{
+ 	openerReload();
+	closeWindow();
+});
+</script>
+
+				
+
+	</body>
+
+	<script src="/assets/global/plugins/bootstrap/js/bootstrap.min.js" type="text/javascript"></script>
+	<script src="/js/common.js?v=14"></script>
+<script src="/js/format.js?v=2"></script>
+<script src="/js/connection.js?v=3"></script>
+<script src="/js/history.js"></script>
+<script src="/js/history.adapter.jquery.js"></script>
+<script src="/js/dyn-content.js?v=6"></script>
+<script src="/js/model.js?v=2"></script>
+
+<script src="/assets/global/scripts/app.min.js" type="text/javascript"></script>
+
+<script>
+$(function()
+{
+	ajaxTools.bindAjaxContent('body');
+})
+</script>
+	
+</html>
