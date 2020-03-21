@@ -1,12 +1,13 @@
-public class TempString {
+import lombok.Value;
 
-    private double[] string;
+@Value
+public class TempString implements Comparable<TempString> {
 
-    TempString(double firstColumn, double secondColumn) {
-        string = new double[]{firstColumn, secondColumn};
-    }
+    Double firstColumn;
+    Double secondColumn;
 
-    public double[] getString() {
-        return string;
+    @Override
+    public int compareTo(TempString o) {
+        return secondColumn.compareTo(o.secondColumn);
     }
 }

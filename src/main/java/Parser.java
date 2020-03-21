@@ -1,7 +1,6 @@
 import com.opencsv.CSVParserBuilder;
 import com.opencsv.CSVReader;
 import com.opencsv.CSVReaderBuilder;
-import com.opencsv.exceptions.CsvException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -12,6 +11,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
@@ -19,20 +19,12 @@ public class Parser {
 
     private List<TempString> stringList = new ArrayList<>();
 
-    public Parser() {
-        try {
-            stringList = parseCSV();
-        } catch (IOException | CsvException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public Parser(File file) {
-        try {
+    public Parser(File file) throws IOException, IllegalArgumentException {
+        if (file.getName().endsWith(".html")) {
             stringList = parseHTML(file);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        } else if (file.getName().endsWith(".csv")) {
+            stringList = parseCSV(file);
+        } else throw new IllegalArgumentException("Wrong argument. Must be .html or .csv");
     }
 
     public List<TempString> getStringList() {
@@ -42,27 +34,25 @@ public class Parser {
     private List<TempString> parseHTML(File file) throws IOException {
         List<TempString> array = new ArrayList<>();
         Document document = Jsoup.parse(file, "UTF-8");
-//        Document document = Jsoup.connect()
         Elements strings = document.select("tr.wborder");
-        Iterator<Element> iter = strings.iterator();
-        while (iter.hasNext()) {
-            Element string = iter.next();
-            String price = string.select("td.price_w_tooltip:nth-child(6)")
-                    .iterator().next().ownText().replaceAll("(\\$| )","");
+        for (Element string : strings) {
+            String price = string.selectFirst("td.price_w_tooltip:nth-child(6)")
+                    .ownText().replaceAll("(\\$| )", "");
             String quality = string.selectFirst("td.supply_data").text().trim();
-            array.add(new TempString(Double.parseDouble(price),Double.parseDouble(quality)));
+            array.add(new TempString(Double.parseDouble(price), Double.parseDouble(quality)));
         }
         return array;
     }
 
 
-    private List<TempString> parseCSV() throws IOException, CsvException {
-        CSVReader reader = new CSVReaderBuilder(new BufferedReader(new FileReader("src\\main\\resources\\virt.csv")))
+    private List<TempString> parseCSV(File file) throws IOException {
+        CSVReader reader = new CSVReaderBuilder(new BufferedReader(new FileReader(file)))
                 .withCSVParser(new CSVParserBuilder().withSeparator(';').build()).build();
         Iterator<String[]> iter = reader.iterator();
         List<TempString> tmpList = new ArrayList<>();
         while (iter.hasNext()) {
             String[] tempLine = iter.next();
+            Arrays.stream(tempLine).forEach(a -> a.replaceAll("(\\$| )", ""));
             TempString tmpstr = new TempString(Double.parseDouble(tempLine[0]), Double.parseDouble(tempLine[1]));
             tmpList.add(tmpstr);
         }
