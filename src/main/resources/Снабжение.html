@@ -1,0 +1,967 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<!-- saved from url=(0067)https://virtonomica.ru/vera/window/unit/supply/create/9078016/step2 -->
+<html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<title>Снабжение</title>
+		<link href="./Снабжение_files/main.css" rel="stylesheet" type="text/css">
+		<link href="./Снабжение_files/api.css" rel="stylesheet" type="text/css">
+		<link href="./Снабжение_files/window.css" rel="stylesheet" type="text/css">
+		<link href="./Снабжение_files/vera.css" rel="stylesheet" type="text/css">
+		<link rel="stylesheet" href="./Снабжение_files/font-awesome.min.css">
+		
+		<script src="./Снабжение_files/jquery.min.js.Без названия" type="text/javascript"></script>	
+		<script src="./Снабжение_files/jquery-migrate-1.4.1.js.Без названия"></script>
+		<script type="text/javascript" src="./Снабжение_files/jquery-ui.min.js.Без названия"></script>
+
+		<script type="text/javascript" src="./Снабжение_files/all.js.Без названия"></script>
+		
+		<meta http-equiv="Expires" content="Tue, 01 Jan 2001 18:00:00 GMT">
+		<meta http-equiv="Pragma" content="no-cache">
+		<meta http-equiv="Cache-Control" content="no-cache">
+
+	<script src="chrome-extension://mooikfkahbdckldjjndioackbalphokd/assets/prompt.js"></script></head>
+	
+	<body class="window">
+
+				
+			
+				
+			
+				
+		
+<link href="./Снабжение_files/supply.css" rel="stylesheet" type="text/css">
+<script type="text/javascript">
+var currency_symbol = '$';
+var offer = new Array;
+var contracts = new Array;
+var data_is_changed = false;
+var selected_id = '';
+
+function FilterFadeIn()
+{
+	if ($('#supply_filter_form').css('display') == 'none')
+	{
+		$('#supply_filter_form').fadeIn(300);
+	}
+	else
+	{
+		$('#supply_filter_form').fadeOut(300);
+	}
+}
+function setFilter()
+{
+	document.getElementById("filterForm").submit();
+}
+function closeFilter()
+{
+	$('#supply_filter_form').fadeOut(300);
+}
+function clearFilter()
+{
+	oForm = document.getElementById("filterForm");
+	oForm.reset();
+	formHiddenFieldValueSet(oForm, 'total_price[from]', 0);
+	formHiddenFieldValueSet(oForm, 'total_price[to]', 0);
+	formHiddenFieldValueSet(oForm, 'quality[from]', 0);
+	formHiddenFieldValueSet(oForm, 'quality[to]', 0);
+	formHiddenFieldValueSet(oForm, 'quantity[from]', 1);
+	formHiddenFieldValueSet(oForm, 'free_for_buy[from]', 1);
+	formHiddenFieldValueSet(oForm, 'brand_value[from]', 0);
+	formHiddenFieldValueSet(oForm, 'brand_value[to]', 0);
+	oForm.submit();
+}
+$(window).unload( function(){ if (data_is_changed) { window.opener.location.reload(); }});
+
+function showOrderForm (id, friendly)
+{
+	var $row = $('#r' + id);
+	var $orderForm = $('#orderForm');
+	var $amountInput = $('#amountInput', $orderForm);
+	var offer_price;
+	if (selected_id != id) {
+		deselect(selected_id, false);
+		selected_id  = id;
+		$row.after($orderForm.show());
+		var currentPrice = $('#priceConstraint', $orderForm).val();
+		currentPrice.replace(/[^.0-9]/g, '');
+		if (offer &amp;&amp; offer[id]) {
+			offer_price =  Math.ceil(offer[id]['price_contract']*100)/100;
+			//if (currentPrice < offer[id]['price_contract']) {
+				$('#priceConstraint', $orderForm).val(Math.ceil(offer[id]['price_contract']*100)/100);
+				$('#priceConstraint', $orderForm).unbind('blur').bind('blur', function()
+				{
+					$(this).val(Math.max($(this).val(), offer_price));
+				});
+			//}
+		}
+		var currentQuality = $('#qualityMin', $orderForm).val();
+		currentQuality.replace(/[^.0-9]/g, '');
+		if (currentQuality > offer[id]['quality']) { $('#qualityMin', $orderForm).val(Math.floor(offer[id]['quality']*100)/100); }
+		if ($row.hasClass('ordered_offer'))
+		{
+			$('#r' + id + ' > .choose > .pseudolink').text("Не изменять");
+			$amountInput.val(contracts[id]['amount']);
+			$amountInput.blur();
+			$('#constraintPriceType', $orderForm).val(contracts[id]['constraintPriceType']).change();
+			$('#priceConstraint', $orderForm).val(contracts[id]['priceConstraint']);
+			$('#priceMarkUp', $orderForm).val(contracts[id]['priceMarkUp']);
+			$('#qualityMin', $orderForm).val(contracts[id]['qualityMin']);
+			$('#instant', $orderForm).prop('checked', contracts[id]['instant']);
+			$('#ordered' + id).hide();
+		}
+		else
+		{
+			$('#r' + id + ' > .choose > .pseudolink').text("Не выбирать");
+			if (friendly) { $('#priceMarkUp', $orderForm).val(0); } else { $('#priceMarkUp', $orderForm).val(2); }
+		}
+		$row.attr('class', "chosen no_selecting");
+		calculatePrice();
+		$amountInput.select().focus();
+	}
+	else
+	{
+		deselect(id, true);
+		selected_id = '';
+	}
+}
+function deselect(id, bSelected)
+{
+	var $row = $('#r' + id);
+	var $orderForm = $('#orderForm');
+	if (!id) return;
+	$orderForm.hide();
+	if (typeof(contracts[id]) == 'undefined' || contracts[id] == null)
+	{
+		$('#r' + id + ' > .choose > .pseudolink').text("Выбрать");
+		if (bSelected &amp;&amp; offer[id]['self'] == 't')
+		{
+			$row.attr('class', "selected_background selected_border wborder myself");
+		}
+		else if (bSelected)
+		{
+			$row.attr('class', "selected_background selected_border wborder");
+		}
+		else if (offer[id]['self'] == 't')
+		{
+			$row.attr('class', "wborder myself");
+		}
+		else
+		{
+			$row.attr('class', "wborder");
+		}
+	}
+	else
+	{
+		$('#ordered' + id).show();
+		$('#r' + id + ' > .choose > .pseudolink').text("Изменить");
+		if (bSelected)
+		{
+			$row.attr('class', "selected_background ordered_offer");
+		}
+		else
+		{
+			$row.attr('class', "ordered_offer");
+		}
+	}
+}
+function calculatePrice()
+{
+	var $orderForm = $('#orderForm');
+	var $amountInput = $('#amountInput', $orderForm);
+	if (!selected_id) return;
+	var amount = (parseInt($amountInput.val()) > 0) ? parseInt($amountInput.val()) : 0;
+	$('#totalPrice', $orderForm).text(sayMoney(amount * offer[selected_id].price, currency_symbol));
+}
+function priceTypeChange()
+{
+	var $orderForm = $('#orderForm');
+	var $constraintPriceType = $('#constraintPriceType', $orderForm);
+	if ($constraintPriceType.val() == 'Rel') {
+		$('.contractConstraintPriceAbs', $orderForm).hide();
+		$('.contractConstraintPriceRel', $orderForm).show();
+	} else if ($constraintPriceType.val() == 'Abs') {
+		$('.contractConstraintPriceAbs', $orderForm).show();
+		$('.contractConstraintPriceRel', $orderForm).hide();
+	}
+}
+function orderSupply()
+{
+	var $orderForm = $('#orderForm');
+	var $amountInput = $('#amountInput', $orderForm);
+	if (typeof(offer[selected_id]) == 'undefined' || offer[selected_id] == null) return;
+	data_is_changed = true;
+	var amount = parseInt($amountInput.val());
+	if (amount <= 0 || isNaN(amount))
+	{
+		deleteContract(selected_id);
+	}
+	else
+	{
+		addContract(
+			selected_id,
+			amount,
+			offer[selected_id]['price'],
+			$('#priceConstraint', $orderForm).val(),
+			$('#priceMarkUp', $orderForm).val(),
+			$('#qualityMin', $orderForm).val(),
+			$('#constraintPriceType', $orderForm).val(),
+			$('#instant', $orderForm).prop('checked'));
+		$.ajax({
+			url: 'https://virtonomica.ru/vera/ajax/unit/supply/create',
+			data:
+			{
+				'offer'  		  		: selected_id,
+				'unit'  		  		: 9078016,
+				'amount'		  		: amount,
+				'priceConstraint' 		: $('#priceConstraint', $orderForm).val(),
+				'priceMarkUp' 	  		: $('#priceMarkUp', $orderForm).val(),
+				'qualityMin' 	  		: $('#qualityMin', $orderForm).val(),
+				'constraintPriceType'	: $('#constraintPriceType', $orderForm).val(),
+				'instant'				: $('#instant', $orderForm).prop('checked')
+			},
+			type: 'post',
+			dataType: 'json',
+			success: function (j) {if (j['result'] == -5) { alert('Заключение контракта блокировано поставщиком'); deleteContract(j['offer']); }},
+			error: function (xhr, desc, er) { }
+		});
+	}
+	deselect(selected_id, false);
+   	selected_id = '';
+}
+function showOverall()
+{
+	var amount = 0;
+	var cost = 0;
+	for (i in contracts) {
+		amount += contracts[i]['amount'];
+		cost += contracts[i]['cost'];
+	}
+	$('.orderedAmount', $('#supplyFooter')).text(amount);
+	$('.orderedSum', $('#supplyFooter')).text(sayMoney(cost, currency_symbol));
+}
+function addContract (_id, amount, price, priceConstraint, priceMarkUp, qualityMin, constraintPriceType, instant)
+{
+	contracts[_id] = new Array;
+	contracts[_id]['amount'] = amount;
+	contracts[_id]['cost'] = amount * price;
+	contracts[_id]['priceConstraint'] = priceConstraint;
+	contracts[_id]['priceMarkUp'] = priceMarkUp;
+	contracts[_id]['qualityMin'] = qualityMin;
+	contracts[_id]['constraintPriceType'] = constraintPriceType;
+	contracts[_id]['instant'] = instant;
+	showOverall();
+	if (typeof(offer[_id]) == 'undefined') return;
+	$('#ordered').clone().insertAfter("#r" + _id).attr('id', 'ordered' + _id).show();
+    $('#ordered' + _id +' .orderedAmount').text(amount);
+    $('#ordered' + _id +' .orderedSum').text(sayMoney(contracts[_id]['cost'], currency_symbol));
+    $('#r' + _id).removeClass().addClass('ordered_offer');
+	$('#r' + _id + ' > .choose > .pseudolink').text("Изменить");
+	$('#ordered' + _id +' .cancelOrder').data('id',_id).click( function()
+	{
+		var id = $(this).data('id');
+		deselect(selected_id, false);
+		deleteContract(id);
+	});
+}
+function deleteContract (_id)
+{
+	delete contracts[_id];
+	deselect(_id, false);
+	selected_id = '';
+	showOverall();
+    $.ajax({
+		url: 'https://virtonomica.ru/vera/ajax/unit/supply/delete',
+		data: {'offer': _id, 'unit': 9078016},
+		type: 'post',
+		complete: function()
+		{
+			$('#ordered' + _id).remove();
+			if (offer[_id]['self'] == 't')
+			{
+				$('#r' + _id).attr('class', "wborder myself");
+			}
+			else
+			{
+				$('#r' + _id).attr('class', "wborder");
+			}
+			$('#r' + _id + ' > .choose > .pseudolink').text("Выбрать");
+		}
+	});
+}
+
+$(function(){
+	$('tr.ordered').bind('mouseenter mouseleave',function(e){
+		var t = $(this);
+		if(e.type == "mouseenter"){ t.addClass('selected_border'); } else { t.removeClass('selected_border'); }
+		if (t.prev().hasClass('orderFormStyle'))
+		{
+			if(e.type == "mouseenter"){ t.prev().prev().addClass('selected_background'); } else { t.prev().prev().removeClass('selected_background'); }		
+		}
+		else
+		{
+			if(e.type == "mouseenter"){ t.prev().addClass('selected_background'); } else { t.prev().removeClass('selected_background'); }
+		}
+	});
+	$('#orderForm').keypress( function(e) {
+		var $orderForm = $('#orderForm');
+		var $amountInput = $('#amountInput', $orderForm);
+		if (e.which == 13 || e.keyCode == 13) { $('#submitLink').click();} // enter
+		else if (e.which == 27 || e.keyCode == 27) { deselect(selected_id, false); selected_id = ''; } // esc
+		else if (e.which == 38 || e.keyCode == 38) { $amountInput.val(parseInt($amountInput.val(), 10) + 1).keyup(); } // up
+		else if (e.which == 40 || e.keyCode == 40) { $amountInput.val(parseInt($amountInput.val(), 10) - 1).keyup(); } // down
+	});
+	$('#filterForm input[type="text"]').keypress( function(e) { if (e.which == 13 || e.keyCode == 13) { setFilter(); }});
+	//if ($.browser.safari) { $('#orderForm').keydown( function(e) { if (e.which == 27 || e.keyCode == 27) { deselect(selected_id, false); selected_id = ''; }}); }
+	$('#requiredLink').click( function(e) {
+		var $orderForm = $('#orderForm');
+		var $amountInput = $('#amountInput', $orderForm);
+		$amountInput.val(parseInt(0)).keyup();
+	});
+});
+</script>
+
+
+<div id="supply_header">
+		<img alt="Зубная паста" title="Зубная паста" src="./Снабжение_files/toothpaste.gif">
+	<h1>Зубная паста — Выбор поставщика</h1>
+		<div>
+		<i>Магазин :: Стокгольм</i>
+	</div>
+	
+			
+	<input id="FilterClear" type="button" class="button160" onclick="clearFilter();" value="Отменить фильтр">
+	
+	<div>
+		<div class="filterSummary2014">
+		Количество <strong>от 0</strong>. Свободно <strong>от 100</strong>		</div>
+	</div>
+	
+		
+		
+		
+	<div class="supply_addition_info">
+		<table>
+			<tbody><tr>
+				<td>Средние значения магазинов города:</td>
+				<th>Цена = $1 000.87</th>
+				<th>Качество = 7.90</th>
+				<th>Бренд = 0.47</th>
+			</tr>
+			<tr>
+				<td>Местные поставщики:</td>
+				<th>Цена = $1 034.95</th>
+				<th>Качество = 4.45</th>
+				<th>Ц/К = 232.57</th>
+			</tr>
+			
+		</tbody></table>
+	</div>
+	
+		
+		
+	<table class="tabsup">
+		<tbody><tr>
+													<td class="selected"><a href="https://virtonomica.ru/vera/window/common/util/setfiltering/dbshop/supplyList/supplierType=all/tm=all">Все</a></td>
+			<td><a href="https://virtonomica.ru/vera/window/common/util/setfiltering/dbshop/supplyList/supplierType=self/tm=all">Свои</a></td>
+			<td><a href="https://virtonomica.ru/vera/window/common/util/setfiltering/dbshop/supplyList/supplierType=corp/tm=all">Корп.</a></td>
+		</tr>
+	</tbody></table>
+	<input id="FilterFadeIn" type="button" class="button160" onclick="FilterFadeIn();" value="Расширенный фильтр">
+</div>
+
+<br clear="all">
+	
+
+<form action="https://virtonomica.ru/vera/window/common/util/setfiltering/dbshop/supplyList" method="POST" name="unitSupplyFilterForm" id="filterForm">
+<div id="supply_filter_form" class="displaynone">
+	<h1>Расширенный фильтр</h1>
+	<table width="100%">
+		<tbody><tr>
+			<td>Итоговая цена за ед.</td>
+			<td>от  <input type="text" name="total_price[from]" value=""></td>
+			<td>до <input type="text" name="total_price[to]" value=""></td>
+		</tr>
+		<tr>
+			<td>Качество</td>
+			<td>от  <input type="text" name="quality[from]" value=""></td>
+			<td>до <input type="text" name="quality[to]" value=""></td>
+		</tr>
+		<tr>
+			<td>Количество</td>
+			<td>от  <input type="text" name="quantity[from]" value=""></td>
+			<td></td>
+		</tr>
+		<tr>
+						<td>Свободно</td>
+			<td>от  <input type="text" name="free_for_buy[from]" value="100"></td>
+			<td></td>
+		</tr>
+				<tr>
+			<td>Значение бренда</td>
+			<td>от  <input type="text" name="brand_value[from]" value=""> </td>
+			<td>до <input type="text" name="brand_value[to]" value=""></td>
+		</tr>
+			</tbody></table>
+	<input type="button" class="button160 undo" onclick="clearFilter();" value="Отменить фильтр">
+	<input type="button" class="button160 continue" onclick="setFilter();" value="Фильтровать">
+	<div class="close" onclick="closeFilter()"></div>
+</div></form>
+<div id="supply_content">
+
+
+<table class="unit-list-2014">
+	<thead>
+		<tr>
+									
+			<th colspan="3" onmouseover="this.className = &#39;filter_light&#39; " onmouseout="this.className = &#39;&#39;" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/unit_name/asc&#39;);"><div class="field_title">Поставщик<div class="asc" title="сортировка по возрастанию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/unit_name/asc" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/unit_name/asc&#39;);"><img src="./Снабжение_files/up_gr_sort.png"></a></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/unit_name/desc" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/unit_name/desc&#39;);"><img src="./Снабжение_files/down_gr_sort.png"></a></div></div></th>			<th colspan="1" onmouseover="this.className = &#39;filter_light&#39; " onmouseout="this.className = &#39;&#39;" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/free_for_buy/asc&#39;);"><div class="field_title">Cвободно<div class="asc" title="сортировка по возрастанию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/free_for_buy/asc" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/free_for_buy/asc&#39;);"><img src="./Снабжение_files/up_gr_sort.png"></a></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/free_for_buy/desc" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/free_for_buy/desc&#39;);"><img src="./Снабжение_files/down_gr_sort.png"></a></div></div><span class="subvalue">На складе</span></th>			<th onmouseover="this.className = &#39;filter_light&#39; " onmouseout="this.className = &#39;&#39;" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/price/asc&#39;);"><div class="field_title">Цена поставщика<div class="asc" title="сортировка по возрастанию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/price/asc" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/price/asc&#39;);"><img src="./Снабжение_files/up_gr_sort.png"></a></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/price/desc" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/price/desc&#39;);"><img src="./Снабжение_files/down_gr_sort.png"></a></div></div></th>			<th class="active_sort " onmouseover="this.className = &#39;filter_light&#39; " onmouseout="this.className = &#39;active_sort &#39;" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/total_cost/desc&#39;);"><div class="field_title">Цена<div class="asc hide_active" title="сортировка по возрастанию"><img src="./Снабжение_files/up_wh_sort.png"></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/total_cost/desc" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/total_cost/desc&#39;);"><img src="./Снабжение_files/down_gr_sort.png"></a></div></div></th>			<th onmouseover="this.className = &#39;filter_light&#39; " onmouseout="this.className = &#39;&#39;" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/quality/asc&#39;);"><div class="field_title">Качество<div class="asc" title="сортировка по возрастанию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/quality/asc" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/quality/asc&#39;);"><img src="./Снабжение_files/up_gr_sort.png"></a></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/quality/desc" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/quality/desc&#39;);"><img src="./Снабжение_files/down_gr_sort.png"></a></div></div></th>						<th onmouseover="this.className = &#39;filter_light&#39; " onmouseout="this.className = &#39;&#39;" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/brand_value/asc&#39;);"><div class="field_title">Бренд<div class="asc" title="сортировка по возрастанию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/brand_value/asc" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/brand_value/asc&#39;);"><img src="./Снабжение_files/up_gr_sort.png"></a></div><div class="desc" title="сортировка по убыванию"><a href="https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/brand_value/desc" onclick="return sortingClick(&#39;https://virtonomica.ru/vera/window/common/util/setordering/dbshop/supplyList/brand_value/desc&#39;);"><img src="./Снабжение_files/down_gr_sort.png"></a></div></div></th>						<th>
+				<div class="field_title"><div class="spec" style="cursor: pointer;" onclick="this.style.cursor=&#39;wait&#39;; body.style.cursor=&#39;wait&#39;; setCookie(&#39;oldschool_supply_form&#39;, &#39;yes&#39;, 365); location.reload();" title="изменить режим отображения"><img src="./Снабжение_files/zoom-in.png"></div></div>
+			</th>
+			
+					</tr>
+	</thead>
+	<tbody>
+			
+		<script>
+
+			offer[9471072] =
+				  {'unit'    : 8837161,
+				   'price'   : 300.04,
+				   'price_contract'   : 300,
+				   'quality' : 14.3850429267143,
+				   'free4buy': 152893,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	<tr id="r9471072" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8837161">Завод зубной пасты</a>
+				<br>
+				<i><b>Sbot Ltd.</b> :: Завод зубной пасты :: Шеллефтео</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="./Снабжение_files/1.gif" align="middle" title="Sbot Ltd.">
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						32 429			<br>
+			<i>152 893</i>
+					</td>
+		
+				<td class="start_price">$300.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$300.04			<span>
+				Цена: $300.00				<br>
+				доставка: $0.04				<br>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						14.39					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9471072, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	</tr><tr>
+		
+		<script>
+
+			offer[9678842] =
+				  {'unit'    : 8468716,
+				   'price'   : 500.03,
+				   'price_contract'   : 500,
+				   'quality' : 4.29603728054153,
+				   'free4buy': 851360,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	</tr><tr id="r9678842" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8468716">Завод зубной пасты</a>
+				<br>
+				<i><b>EV-GEN Ltd.</b> :: Завод зубной пасты :: Лулео</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="./Снабжение_files/1.gif" align="middle" title="EV-GEN Ltd.">
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						851 360			<br>
+			<i>851 360</i>
+					</td>
+		
+				<td class="start_price">$500.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$500.03			<span>
+				Цена: $500.00				<br>
+				доставка: $0.03				<br>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						4.30					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9678842, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	</tr><tr>
+		
+		<script>
+
+			offer[9157273] =
+				  {'unit'    : 7328321,
+				   'price'   : 638.13,
+				   'price_contract'   : 580,
+				   'quality' : 15.9131131448382,
+				   'free4buy': 20373,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	</tr><tr id="r9157273" class="wborder selected_border selected_background">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/7328321">Склад</a>
+				<br>
+				<i><b>iricon-Финанс</b> :: Склад :: Алмалык</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="./Снабжение_files/1.gif" align="middle" title="iricon-Финанс">
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						13 173			<br>
+			<i>20 373</i>
+					</td>
+		
+				<td class="start_price">$580.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$638.13			<span>
+				Цена: $580.00				<br>
+				доставка: $0.13				<br>
+				таможня: $58.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						15.91					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9157273, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	</tr><tr>
+		
+		<script>
+
+			offer[9309326] =
+				  {'unit'    : 8310285,
+				   'price'   : 700.03,
+				   'price_contract'   : 700,
+				   'quality' : 20.0223924224603,
+				   'free4buy': 3500,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	</tr><tr id="r9309326" class="wborder">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8310285">Склад</a>
+				<br>
+				<i><b>Petrollium_1 Ltd.</b> :: Склад :: Лулео</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="./Снабжение_files/8284859_small" align="middle" title="Petrollium_1 Ltd.">
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						3 500			<br>
+			<i>3 500</i>
+					</td>
+		
+				<td class="start_price">$700.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$700.03			<span>
+				Цена: $700.00				<br>
+				доставка: $0.03				<br>
+				таможня: $0.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						20.02					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9309326, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	</tr><tr>
+		
+		<script>
+
+			offer[9168252] =
+				  {'unit'    : 8464856,
+				   'price'   : 823.30,
+				   'price_contract'   : 784,
+				   'quality' : 11.8129380755958,
+				   'free4buy': 596025,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	</tr><tr id="r9168252" class="wborder">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8464856">Завод зубной пасты ЛюксаЛют</a>
+				<br>
+				<i><b>Баварцев Инвест</b> :: Завод зубной пасты :: Нижневартовск</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="./Снабжение_files/1.gif" align="middle" title="Баварцев Инвест">
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						<u>10 000</u>
+			<br>
+			<i>596 025</i>
+			<span>Установлены ограничения на максимальный объём поставок по одному контракту</span>
+					</td>
+		
+				<td class="start_price">$784.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$823.30			<span>
+				Цена: $784.00				<br>
+				доставка: $0.10				<br>
+				таможня: $39.20			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						11.81					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9168252, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	</tr><tr>
+		
+		<script>
+
+			offer[9159581] =
+				  {'unit'    : 8275664,
+				   'price'   : 1589.92,
+				   'price_contract'   : 1458.61,
+				   'quality' : 22.6771929368394,
+				   'free4buy': 107000,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	</tr><tr id="r9159581" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8275664">Склад</a>
+				<br>
+				<i><b>Nomos</b> :: Склад :: Даугавпилс</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="./Снабжение_files/1.gif" align="middle" title="Nomos">
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						<u>5 000</u>
+			<br>
+			<i>107 000</i>
+			<span>Установлены ограничения на максимальный объём поставок по одному контракту</span>
+					</td>
+		
+				<td class="start_price">$1 458.61</td>
+				
+				
+		<td class="price_w_tooltip">
+			$1 589.92			<span>
+				Цена: $1 458.61				<br>
+				доставка: $0.04				<br>
+				таможня: $131.27			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						22.68					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9159581, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	</tr><tr>
+		
+		<script>
+
+			offer[9561919] =
+				  {'unit'    : 8942579,
+				   'price'   : 2071.04,
+				   'price_contract'   : 1900,
+				   'quality' : 17.4839545253288,
+				   'free4buy': 539221,
+				   'self': 'f'
+				  };
+
+	     	 
+		</script>
+	
+	</tr><tr id="r9561919" class="wborder ">
+	
+					<td></td>
+						
+		<td>
+							<a href="https://virtonomica.ru/vera/window/unit/view/8942579">Склад СКУТЕР LV 010320</a>
+				<br>
+				<i><b>АО «BLESK»</b> :: Склад :: Даугавпилс</i>
+					</td>
+		
+					<td class="brandname_img">
+			<img src="./Снабжение_files/1.gif" align="middle" title="АО «BLESK»">
+		</td>
+						
+					
+		<td class="price_w_tooltip">
+						539 221			<br>
+			<i>539 221</i>
+					</td>
+		
+				<td class="start_price">$1 900.00</td>
+				
+				
+		<td class="price_w_tooltip">
+			$2 071.04			<span>
+				Цена: $1 900.00				<br>
+				доставка: $0.04				<br>
+				таможня: $171.00			</span>
+		</td>
+		
+				
+		<td class="supply_data">
+						17.48					</td>
+				<td class="supply_data">
+						0.00					</td>
+				<td class="choose" onclick="showOrderForm(9561919, false)">
+			<span class="pseudolink">Выбрать</span>
+		</td>
+	</tr><tr>
+		</tr></tbody>
+</table>
+
+<table width="100%" class="displaynone">
+<tbody><tr id="orderForm" class="orderFormStyle">
+	<td colspan="9">
+		<form name="orderForm" onsubmit="$(&#39;#submitLink&#39;).click(); return false;">
+		<fieldset class="contract">
+			<div class="main">
+				Контракт на закупку <input type="text" value="" id="amountInput" onblur="calculatePrice();" onkeyup="calculatePrice();"> шт.				на сумму <span id="totalPrice">&nbsp;</span>
+			</div>
+			<div class="constraints">
+				<fieldset>
+					<legend>Дополнительные условия</legend>
+
+					<span class="contractConstraintsPrices">
+						<span class="contractConstraintPriceAbs hidden">
+							Прекратить поставку при повышении цены							до							<input type="text" value="0" id="priceConstraint">
+						</span>
+						<span class="contractConstraintPriceRel">
+								Прекратить поставку при повышении цены								на								<select id="priceMarkUp">
+																	<option value="0">никогда</option>
+																	<option value="1">5</option>
+																	<option value="2" selected="selected">10</option>
+																	<option value="3">20</option>
+																	<option value="4">50</option>
+																	<option value="5">100</option>
+																</select>
+						</span>
+					</span>
+
+					<select id="constraintPriceType" class="contractConstraintPriceType" name="unitSupplyData[constraintPriceType]" onchange="priceTypeChange();">
+						<option value="Rel" selected="selected">%</option>
+						<option value="Abs">$</option>
+					</select>
+
+					<br>
+
+					Прекратить поставку при снижении качества ниже					<input type="text" value="0" id="qualityMin"> 					
+					<br>
+					
+					<input type="checkbox" id="instant" style="width: 18px;"><label for="instant">Разовая закупка</label>
+					
+										
+				</fieldset>
+
+			</div>
+			<div class="sign">
+				<span class="pseudolink" id="submitLink" onclick="orderSupply();">Заказать</span>
+			</div>
+
+		</fieldset>
+		</form>
+	</td>
+</tr>
+
+<tr id="ordered" class="ordered">
+	<td colspan="9">
+		<div class="cancelOrder pseudolink">Отменить заказ</div>
+		Оформлен заказ на поставку.		Размер партии: <strong><span class="orderedAmount">0</span> шт.</strong>. Сумма заказа: <strong class="orderedSum">0</strong>
+	</td>
+</tr>
+
+</tbody></table>
+
+
+</div>
+<div id="supplyFooter">
+	
+<div style="MARGIN-TOP: 12px; FONT-SIZE: 11px !important;">
+
+		<ul class="pager_options pull-left">
+		<li>Показывать по:</li>
+		
+							
+		<li>
+			<a href="https://virtonomica.ru/vera/window/common/util/setpaging/dbshop/supplyList/10">
+			10			</a>
+		</li>
+		
+										
+		<li>
+			<a href="https://virtonomica.ru/vera/window/common/util/setpaging/dbshop/supplyList/25">
+			25			</a>
+		</li>
+		
+											
+		<li class="selected">50</li>
+		
+										
+		<li>
+			<a href="https://virtonomica.ru/vera/window/common/util/setpaging/dbshop/supplyList/100">
+			100			</a>
+		</li>
+		
+										
+		<li>
+			<a href="https://virtonomica.ru/vera/window/common/util/setpaging/dbshop/supplyList/200">
+			200			</a>
+		</li>
+		
+										
+		<li>
+			<a href="https://virtonomica.ru/vera/window/common/util/setpaging/dbshop/supplyList/400">
+			400			</a>
+		</li>
+		
+							
+	</ul>
+	
+	<ul class="pager_list pull-right">
+		<li>Страница:</li>
+																<li class="selected">1</li>			
+																
+	</ul>
+
+</div>
+<div style="clear: both;"></div>	<div class="summary">Итого:  <strong><span class="orderedAmount">0</span> шт.</strong> На общую сумму: <strong class="orderedSum">0</strong></div>
+	<div class="close"><span class="pseudolink">Закрыть окно</span></div>
+</div>
+
+<script>
+$('#supplyFooter .close').click(function()
+{
+ 	openerReload();
+	closeWindow();
+});
+</script>
+
+				
+
+	
+
+	<script src="./Снабжение_files/bootstrap.min.js.Без названия" type="text/javascript"></script>
+	<script src="./Снабжение_files/common.js.Без названия"></script>
+<script src="./Снабжение_files/format.js.Без названия"></script>
+<script src="./Снабжение_files/connection.js.Без названия"></script>
+<script src="./Снабжение_files/history.js.Без названия"></script>
+<script src="./Снабжение_files/history.adapter.jquery.js.Без названия"></script>
+<script src="./Снабжение_files/dyn-content.js.Без названия"></script>
+<script src="./Снабжение_files/model.js.Без названия"></script>
+
+<script src="./Снабжение_files/app.min.js.Без названия" type="text/javascript"></script>
+
+<script>
+$(function()
+{
+	ajaxTools.bindAjaxContent('body');
+})
+</script>
+	
+</body><script>(function() {
+  var href = location.href;
+
+  var price = $("#supply_header > div.supply_addition_info > table > tbody > tr:nth-child(2) > th:nth-child(2)");
+  price = price[0].innerHTML.replace('Цена = $','').replace(' ','');
+
+  var quality = $("#supply_header > div.supply_addition_info > table > tbody > tr:nth-child(2) > th:nth-child(3)");
+  quality = quality[0].innerHTML.replace('Качество = ','');
+//    inp_sale = $("td:nth-child(3) > a");
+  var PQ = price / quality;
+  document.querySelector("#supply_header > div.supply_addition_info > table > tbody > tr:nth-child(2) > th:nth-child(4)").innerHTML = 'Ц/К = '+PQ.toFixed(2);
+    console.log(price);
+})();</script></html>
